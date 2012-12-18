@@ -32,35 +32,17 @@ byte Si570::init(byte addr, unsigned long startupFreq, bool stability_7ppm) {
 }
 
 byte Si570::hardReset() {
-	byte r135;
-
-	r135 = SI570_R135_RESET;
-	writeRegister(135, r135); // returns error, probably because this command breaks i2c, regarding to datasheet
-
-	do {
-		r135 = readRegister(135);
-	} while (r135 != SI570_R135_DEFAULT);
-
+	writeAndWaitR135(SI570_R135_RESET); // returns error, probably because this command breaks i2c, regarding to datasheet
 	return reset();
 }
+
 byte Si570::reset() {
-	byte i;
 	byte err = 0;
-	byte r135;
 
-	r135 = SI570_R135_RECALL;
-	err |= writeRegister(135, r135);
-
-	do {
-		r135 = readRegister(135);
-	} while (r135 != SI570_R135_DEFAULT);
-
-
+	err |= writeAndWaitR135(SI570_R135_RECALL);
 	err |= readFrequencyRegisters();
 	// Initially write regs must not be empty because default calculations are based on it
-	for (i = 0 ; i < 6 ; i++)
-		i2cWriteBuf[i] = i2cReadBuf[i];
-
+	memcpy(i2cWriteBuf, i2cReadBuf, 6);
 
 	// fxtal calculation
 	// First divide, to avoid 32 bits overflow
@@ -98,7 +80,7 @@ unsigned int Si570::getN1(const byte * regs) {
 	n1 = (( regs[0] & 0x1F ) << 2 ) + (( regs[1] & 0xC0 ) >> 6 );
 	if (n1 == 0) {
 		n1 = 1;
-	} else if (n1 & 1 != 0) {
+	} else if ((n1 & 1) != 0) {
 		// add one to an odd number
 		n1 = n1 + 1;
 	}
@@ -152,11 +134,16 @@ byte Si570::tune(unsigned long frequency) {
 
 byte Si570::setFrequency(unsigned long fout) {
 	byte err;
-	unsigned char hsdiv;
-	unsigned int n1;
+//	unsigned char hsdiv;
+//	unsigned int n1;
 	byte i;
 
 	err = 0;
+
+#ifdef SI570_DEBUG
+	Serial.print(F("Si570: set frequency (Hz): "));
+	Serial.println(fout);
+#endif
 
 	// Try small change
 	if (SI570_SMALL_CHANGE && setRfreqSmallChange(fout, i2cWriteBuf) == SI570_SUCCESS) {
@@ -173,9 +160,10 @@ byte Si570::setFrequency(unsigned long fout) {
 
 #if SI570_CHECK_REGISTERS == 1
 	if (checkFrequencyRegisters() != SI570_SUCCESS) {
-		for (i = 0 ; i < 6 ; ++i) {
-			i2cWriteBuf[i] = i2cReadBuf[i];
-		}
+		memcpy(i2cReadBuf, i2cWriteBuf, 6);
+//		for (i = 0 ; i < 6 ; ++i) {
+//			i2cWriteBuf[i] = i2cReadBuf[i];
+//		}
 		err |= SI570_CHECKREG_ERROR;
 	}
 #endif
@@ -192,7 +180,7 @@ byte Si570::setRfreqSmallChange(unsigned long foutNew, byte * regs) {
 	unsigned int n1;
 
 #ifdef SI570_DEBUG
-		Serial.println("Si570: Small Freq change");
+		Serial.println(F("Si570: Small Freq change"));
 #endif
 
 	foutCurrent = getFrequency(regs);
@@ -220,7 +208,7 @@ byte Si570::setRfreq(unsigned long fout, byte * regs) {
 	err = SI570_SUCCESS;
 
 #ifdef SI570_DEBUG
-	Serial.println("Si570: Large Freq change");
+	Serial.println(F("Si570: Large Freq change"));
 #endif
 
 	err |= findDividers(fout, hsdiv, n1);
@@ -233,9 +221,9 @@ byte Si570::setRfreq(unsigned long fout, byte * regs) {
 }
 
 byte Si570::findDividers(unsigned long fout, byte &hsdiv, unsigned int &n1) {
-	const unsigned char HS_DIV[6] = {11, 9, 7, 6, 5, 4};
+	const unsigned char HS_DIV[] = {11, 9, 7, 6, 5, 4};
 	unsigned long fout_kHz = fout / 1000;
-	int maxDivider = floor( (float) SI570_FDCO_MAX_KHZ / fout_kHz );
+	unsigned int maxDivider = floor( (float) SI570_FDCO_MAX_KHZ / fout_kHz );
 
 	n1 = ceil( (float) SI570_FDCO_MIN_KHZ / (float) fout_kHz / 11);
 
@@ -271,41 +259,29 @@ byte Si570::freezeDCO(void) {
 byte Si570::unfreezeDCO(void) {
 	byte err = 0;
 	byte r137;
-	byte r135;
 
 	r137 = readRegister(137) & ~SI570_R137_FREEZE_DCO;
-	r135 = SI570_R135_NEWFREQ;
-
 	err |= writeRegister(137, r137);
-	err |= writeRegister(135, r135);
 
-	do {
-		r135 = readRegister(135);
-	} while (r135 != SI570_R135_DEFAULT);
-
-//	// We don't use writeRegisters() as it seems to be bug-prone,
-//	// maybe because of time constraints between unfreeze and
-//	// NewFreq bit operations.
-//	// TODO: investigate !!!
-//	Wire.beginTransmission(i2cAddress);
-//	Wire.write(137);
-//	Wire.write(r137);
-//	err |= Wire.endTransmission();
-//	Wire.beginTransmission(i2cAddress);
-//	Wire.write(135);
-//	Wire.write(r135);
-//	err |= Wire.endTransmission();
-
-//	t = micros() -t;
-//	Serial.print("delay (us) = ");
-//	Serial.println(t);
-
-//	while ( ! (err || i2cBuf[0] == SI570_R135_DEFAULT) ) {
-//		err = readRegisters(135, 1);
-//	}
+	err |= writeAndWaitR135(SI570_R135_NEWFREQ);
 
 	return err;
 }
+
+byte Si570::waitR135() {
+	byte r135;
+	for (int i = 0 ; i <= SI570_R135_RETRIES ; ++i) {
+		r135 = readRegister(135);
+		if (r135 == SI570_R135_DEFAULT)
+			break;
+	}
+	if (r135 == 0xFF)
+		return SI570_I2C_ERROR;
+	else if (r135 != SI570_R135_DEFAULT)
+		return SI570_TIMEOUT_ERROR;
+	return SI570_SUCCESS;
+}
+
 
 //byte Si570::setHSDiv(byte hsdiv) {
 //	return setHSDiv(hsdiv, i2cWriteBuf);
@@ -359,7 +335,7 @@ byte Si570::writeFrequencyRegisters() {
 
 #ifdef SI570_DEBUG
 	for (int i = 0 ; i < 6 ; ++i) {
-		Serial.print("Si570: WRITE: r");
+		Serial.print(F("Si570: WRITE: r"));
 		Serial.print(regAddr + i);
 		Serial.print(": ");
 		Serial.print("0x");
@@ -417,19 +393,20 @@ byte Si570::readRegister(byte byteAddress) {
 
 	Wire.beginTransmission(i2cAddress);
 	Wire.write(byteAddress);
+	//NOTE: Needs arduino libs >= 1.0.1 (use of sendStop option)
 	retcode = Wire.endTransmission(false);
 	Wire.requestFrom((byte) i2cAddress, (byte) 1);
 	resp = Wire.read();
 	retcode = Wire.endTransmission();
 
 #ifdef SI570_DEBUG
-	Serial.print("Si570: READ: r");
+	Serial.print(F("Si570: READ: r"));
 	Serial.print(byteAddress);
 	Serial.print(": ");
 	Serial.print("0x");
 	Serial.print(resp, HEX);
 	if (retcode != 0) {
-		Serial.print(" [WIRE ERROR=");
+		Serial.print(F(" [WIRE ERROR="));
 		Serial.print(retcode);
 		Serial.println("]");
 	}
@@ -438,6 +415,8 @@ byte Si570::readRegister(byte byteAddress) {
 
 	return resp;
 }
+
+
 
 byte Si570::readFrequencyRegisters() {
 
@@ -456,7 +435,7 @@ byte Si570::readFrequencyRegisters() {
 		}
 		i2cReadBuf[i] = Wire.read();
 #ifdef SI570_DEBUG
-		Serial.print("Si570: READ: r");
+		Serial.print(F("Si570: READ: r"));
 		Serial.print(regAddr + i);
 		Serial.print(": ");
 		Serial.print("0x");
@@ -486,14 +465,14 @@ byte Si570::checkFrequencyRegisters() {
 	for (i = 0 ; i < 5 ; ++i) {
 		if (i2cReadBuf[i] != i2cWriteBuf[i]) {
 #ifdef SI570_DEBUG
-			Serial.println("Si570: ERROR: Register error");
+			Serial.println(F("Si570: ERROR: Register error"));
 			Serial.print(i + regAddr);
 			Serial.print(": ");
 			Serial.print(i2cReadBuf[i], HEX);
 			Serial.print(" != ");
 			Serial.println(i2cWriteBuf[i], HEX);
 
-			Serial.println("Si570: ERROR: Register error");
+			Serial.println(F("Si570: ERROR: Register error"));
 			debugWriteRegisters();
 			debugReadRegisters();
 #endif
@@ -503,44 +482,46 @@ byte Si570::checkFrequencyRegisters() {
 	return SI570_SUCCESS;
 }
 
+#ifdef SI570_DEBUG
 void Si570::debugReadRegisters() {
-	Serial.println("Si570: Read register values:");
+
+	Serial.println(F("Si570: Read register values:"));
 	debugRegisters(i2cReadBuf);
 }
 
 void Si570::debugWriteRegisters() {
-	Serial.println("Si570: Write register values:");
+	Serial.println(F("Si570: Write register values:"));
 	debugRegisters(i2cWriteBuf);
 }
 
 void Si570::debugRegisters(const byte * regs) {
-#ifdef SI570_DEBUG
-	Serial.print("\tFxtal      ");
-	Serial.print(fxtal);
-	Serial.println(" Hz");
 
-	Serial.print("\tHS_DIV     ");
+	Serial.print(F("\tFxtal      "));
+	Serial.print(fxtal);
+	Serial.println(F(" Hz"));
+
+	Serial.print(F("\tHS_DIV     "));
 	Serial.println((int) getHSDiv(regs));
 
-	Serial.print("\tN1         ");
+	Serial.print(F("\tN1         "));
 	Serial.println((int) getN1(regs));
 
-	Serial.print("\tRfreq      ");
+	Serial.print(F("\tRfreq      "));
 	Serial.print(getRfreq(regs));
-	Serial.print(" (");
+	Serial.print(F(" ("));
 	Serial.print(getRfreqInt(regs));
-	Serial.print(" + ");
+	Serial.print(F(" + "));
 	Serial.print(getRfreqFrac(regs));
-	Serial.println(" / 2^28)");
+	Serial.println(F(" / 2^28)"));
 
-	Serial.print("\tFdco       ");
+	Serial.print(F("\tFdco       "));
 	Serial.print(getFdco(regs));
-	Serial.println(" kHz");
+	Serial.println(F(" kHz"));
 
-	Serial.print("\tFout       ");
+	Serial.print(F("\tFout       "));
 	Serial.print(getFrequency(regs));
-	Serial.println(" Hz");
+	Serial.println(F(" Hz"));
 	Serial.println();
-#endif
-}
 
+}
+#endif

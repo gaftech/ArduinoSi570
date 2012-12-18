@@ -1,7 +1,7 @@
 # Makefile, using Arduino-Makefile (https://github.com/gaftech/Arduino-Makefile)
 
 # Hardware
-BOARD_TAG			= pro328
+BOARD_TAG			= uno
 ARDUINO_PORT		= /dev/ttyUSB0
 
 # Needed libs

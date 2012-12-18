@@ -15,6 +15,8 @@
 #ifndef SI570_H_
 #define SI570_H_
 
+//#define SI570_DEBUG
+
 /****************
  * Some constants
  */
@@ -25,6 +27,7 @@
 #define SI570_I2C_ERROR			1 << 1
 #define SI570_CHECKREG_ERROR	1 << 2
 #define SI570_VALUE_ERROR		1 << 3
+#define SI570_TIMEOUT_ERROR		1 << 4
 
 // Control bits
 #define SI570_R135_DEFAULT		0
@@ -47,7 +50,7 @@
 // Default Si570 values
 #define SI570_I2C_ADDRESS		0x55
 #ifndef SI570_STARTUP_FREQ
-#define SI570_STARTUP_FREQ		56320000	// Hz
+#define SI570_STARTUP_FREQ		10000000	// Hz
 #endif
 #ifndef SI570_7PPM_STABILITY
 #define SI570_7PPM_STABILITY	0			// 1 for Si570 with "A" second option code
@@ -67,13 +70,15 @@
 #define SI570_CHECK_REGISTERS	1				// After writing new frequency,
 												// check if it has been applied
 												// then retry if not.
-#ifndef SI570_TUNE_RETRIES
-#define SI570_TUNE_RETRIES		0				// Number of retries in case of register check error
-												// after applying new frequency
+
+#ifndef SI570_R135_RETRIES						// Number of retries when waiting for the register 135
+#define SI570_R135_RETRIES		10				// to be cleared
 #endif
-#ifndef SI570_SMALL_CHANGE
-#define SI570_SMALL_CHANGE		0				// Try the small frequency change algorithm when
-												// it can be apply.
+#ifndef SI570_TUNE_RETRIES						// Number of retries in case of register check error
+#define SI570_TUNE_RETRIES		0				// after applying new frequency
+#endif
+#ifndef SI570_SMALL_CHANGE						// Try the small frequency change algorithm when
+#define SI570_SMALL_CHANGE		0				// it can be apply.
 #endif
 
 class Si570
@@ -98,8 +103,11 @@ public:
 	 * Can be used to check if previous frequency write was successful.
 	 */
 	byte checkFrequencyRegisters();
+#ifdef SI570_DEBUG
 	void debugReadRegisters();
 	void debugWriteRegisters();
+	void debugRegisters(const byte * regs);
+#endif
 
 private:
 	/* Device factory settings */
@@ -146,6 +154,8 @@ private:
 	/* device 135 and 137 registers accessors */
 	byte freezeDCO(void);
 	byte unfreezeDCO(void);
+	byte waitR135(void);
+	byte writeAndWaitR135(byte val)		{ return writeRegister(135, val) | waitR135(); }
 
 	/*
 	 * Directly read/write value from/to device register.
@@ -160,8 +170,6 @@ private:
 	 */
 	byte writeFrequencyRegisters();
 	byte readFrequencyRegisters();
-
-	void debugRegisters(const byte * regs);
 
 };
 
