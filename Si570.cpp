@@ -15,18 +15,26 @@
 #include <Wire.h>
 
 byte Si570::init() {
-	return init(SI570_I2C_ADDRESS, SI570_STARTUP_FREQ, SI570_7PPM_STABILITY);
+	Serial.print("Si570: OE pin at init: ");
+	Serial.println(SI570_OE_PIN);
+	return init(SI570_I2C_ADDRESS, SI570_STARTUP_FREQ, SI570_7PPM_STABILITY, SI570_OE_PIN, SI570_OE_HIGH);
 }
 
-byte Si570::init(byte addr, unsigned long startupFreq, bool stability_7ppm) {
-	i2cAddress = addr;
-	startFreq = startupFreq;
+byte Si570::init(byte addr, unsigned long startupFreq, bool stability_7ppm, byte oepin, boolean oehigh) {
+	this->i2cAddress = addr;
+	this->startFreq = startupFreq;
 	if (stability_7ppm)
 		regAddr = 13;
 	else
 		regAddr = 7;
+	this->oepin = oepin;
+	this->oehigh = oehigh;
 
 	Wire.begin();
+
+	if (oepin) {
+		pinMode(oepin,INPUT);
+	}
 
 	return reset();
 }
@@ -51,6 +59,26 @@ byte Si570::reset() {
 	return err;
 }
 
+void Si570::enable(boolean on) {
+	if (oepin == NOT_A_PIN) return;
+	boolean pinLevel;
+	pinLevel = oehigh ? on : !on;
+	if (pinLevel) {
+		pinMode(oepin, INPUT);
+	}
+	else {
+		digitalWrite(oepin, LOW);
+		pinMode(oepin, OUTPUT);
+		digitalWrite(oepin, LOW);
+	}
+}
+
+boolean Si570::isEnabled() {
+	if (oepin == NOT_A_PIN) return 1;
+	boolean pinLevel = digitalRead(oepin);
+	return oehigh ? pinLevel : !pinLevel;
+}
+
 unsigned long Si570::getFrequency(void) {
 	return getFrequency(i2cWriteBuf);
 }
@@ -59,21 +87,10 @@ unsigned long Si570::getFrequency(const byte * regs) {
 	return (getRfreq(regs) * fxtal) / (getHSDiv(regs) * getN1(regs));
 }
 
-//unsigned long Si570::getFxtal(void) {
-//	return fxtal;
-//}
-
-//byte Si570::getHSDiv() {
-//	return getHSDiv(i2cWriteBuf);
-//}
 
 byte Si570::getHSDiv(const byte * regs) {
 	return ((regs[0] & 0xE0) >> 5) + 4;
 }
-
-//unsigned int Si570::getN1() {
-//	return getN1(i2cWriteBuf);
-//}
 
 unsigned int Si570::getN1(const byte * regs) {
 	unsigned int n1;
@@ -87,17 +104,9 @@ unsigned int Si570::getN1(const byte * regs) {
 	return n1;
 }
 
-//unsigned int Si570::getRfreqInt() {
-//	return getRfreqInt(i2cWriteBuf);
-//}
-
 unsigned int Si570::getRfreqInt(const byte * regs) {
 	return (( regs[1] & 0x3F ) << 4 ) + (( regs[2] & 0xF0 ) >> 4 );
 }
-
-//unsigned long Si570::getRfreqFrac() {
-//	return getRfreqFrac(i2cWriteBuf);
-//}
 
 unsigned long Si570::getRfreqFrac(const byte * regs) {
 	unsigned long rfreq_f;
@@ -134,9 +143,6 @@ byte Si570::tune(unsigned long frequency) {
 
 byte Si570::setFrequency(unsigned long fout) {
 	byte err;
-//	unsigned char hsdiv;
-//	unsigned int n1;
-	byte i;
 
 	err = 0;
 
@@ -161,9 +167,6 @@ byte Si570::setFrequency(unsigned long fout) {
 #if SI570_CHECK_REGISTERS == 1
 	if (checkFrequencyRegisters() != SI570_SUCCESS) {
 		memcpy(i2cReadBuf, i2cWriteBuf, 6);
-//		for (i = 0 ; i < 6 ; ++i) {
-//			i2cWriteBuf[i] = i2cReadBuf[i];
-//		}
 		err |= SI570_CHECKREG_ERROR;
 	}
 #endif
@@ -282,20 +285,11 @@ byte Si570::waitR135() {
 	return SI570_SUCCESS;
 }
 
-
-//byte Si570::setHSDiv(byte hsdiv) {
-//	return setHSDiv(hsdiv, i2cWriteBuf);
-//}
-
 byte Si570::setHSDiv(byte hsdiv, byte * regs) {
 	regs[0] &= 0x1f;
 	regs[0] |= ((hsdiv - 4) << 5) & 0xe0;
 	return SI570_SUCCESS;
 }
-
-//byte Si570::setN1(unsigned int n1) {
-//	return setN1(n1, i2cWriteBuf);
-//}
 
 byte Si570::setN1(unsigned int n1, byte * regs) {
 	n1 -= 1;
@@ -305,10 +299,6 @@ byte Si570::setN1(unsigned int n1, byte * regs) {
 	regs[1] |= (n1 << 6) & 0xc0;
 	return SI570_SUCCESS;
 }
-
-//byte Si570::setRfreqRegisters(unsigned int rfreqInt, unsigned long rfreqFrac) {
-//	return setRfreqRegisters(rfreqInt, rfreqFrac, i2cWriteBuf);
-//}
 
 byte Si570::setRfreqRegisters(unsigned int rfreqInt, unsigned long rfreqFrac, byte * regs) {
 	regs[1] &= 0xc0;
@@ -322,17 +312,6 @@ byte Si570::setRfreqRegisters(unsigned int rfreqInt, unsigned long rfreqFrac, by
 }
 
 byte Si570::writeFrequencyRegisters() {
-//	byte n1_b = n1 - 1;
-
-//	i2cWriteBuf[0] = (hsdiv -4) << 5 | n1_b >> 2;
-//	i2cWriteBuf[1] = (n1_b & 0x3) << 6;
-//	i2cWriteBuf[1] |= rfreq_i >> 4;
-//	i2cWriteBuf[2] = (rfreq_i & 0xf) << 4;
-//	i2cWriteBuf[2] |= rfreq_f >> 24;
-//	i2cWriteBuf[3] = (rfreq_f >> 16) & 0xff;
-//	i2cWriteBuf[4] = (rfreq_f >> 8) & 0xff;
-//	i2cWriteBuf[5] = rfreq_f & 0xff;
-
 #ifdef SI570_DEBUG
 	for (int i = 0 ; i < 6 ; ++i) {
 		Serial.print(F("Si570: WRITE: r"));
@@ -366,38 +345,25 @@ byte Si570::writeRegister(byte byteAddress, byte value) {
 	Wire.write(value);
 	retcode = Wire.endTransmission();
 
-//#ifdef SI570_DEBUG
-//	Serial.print("Si570: WRITE: r");
-//	Serial.print(byteAddress);
-//	Serial.print(": ");
-//	Serial.print("0x");
-//	Serial.print(value, HEX);
-//	if (retcode != 0) {
-//		Serial.print(" [WIRE ERROR=");
-//		Serial.print(retcode);
-//		Serial.println("]");
-//	}
-//	else Serial.println();
-//#endif
-
 	if (retcode != 0) return SI570_I2C_ERROR;
 
 	return SI570_SUCCESS;
 }
 
 
-
+/*
+ * TODO: Handle Wire.endTransmission return value
+ */
 byte Si570::readRegister(byte byteAddress) {
 	byte resp;
-	byte retcode;
 
 	Wire.beginTransmission(i2cAddress);
 	Wire.write(byteAddress);
 	//NOTE: Needs arduino libs >= 1.0.1 (use of sendStop option)
-	retcode = Wire.endTransmission(false);
+	Wire.endTransmission(false);
 	Wire.requestFrom((byte) i2cAddress, (byte) 1);
 	resp = Wire.read();
-	retcode = Wire.endTransmission();
+	Wire.endTransmission();
 
 #ifdef SI570_DEBUG
 	Serial.print(F("Si570: READ: r"));
@@ -405,18 +371,16 @@ byte Si570::readRegister(byte byteAddress) {
 	Serial.print(": ");
 	Serial.print("0x");
 	Serial.print(resp, HEX);
-	if (retcode != 0) {
-		Serial.print(F(" [WIRE ERROR="));
-		Serial.print(retcode);
-		Serial.println("]");
-	}
+//	if (retcode != 0) {
+//		Serial.print(F(" [WIRE ERROR="));
+//		Serial.print(retcode);
+//		Serial.println("]");
+//	}
 	else Serial.println();
 #endif
 
 	return resp;
 }
-
-
 
 byte Si570::readFrequencyRegisters() {
 
@@ -441,11 +405,6 @@ byte Si570::readFrequencyRegisters() {
 		Serial.print("0x");
 		Serial.println(i2cReadBuf[i], HEX);
 #endif
-
-//		Serial.print("Read: r");
-//		Serial.print(byteAddress + i);
-//		Serial.print(": 0x");
-//		Serial.println(i2cWriteBuf[i], HEX);
 	}
 	if ( Wire.endTransmission() != 0 )
 		return SI570_I2C_ERROR;

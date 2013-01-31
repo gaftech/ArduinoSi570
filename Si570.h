@@ -48,12 +48,20 @@
  */
 
 // Default Si570 values
+#ifndef SI570_I2C_ADDRESS
 #define SI570_I2C_ADDRESS		0x55
+#endif
 #ifndef SI570_STARTUP_FREQ
 #define SI570_STARTUP_FREQ		10000000	// Hz
 #endif
 #ifndef SI570_7PPM_STABILITY
 #define SI570_7PPM_STABILITY	0			// 1 for Si570 with "A" second option code
+#endif
+#ifndef SI570_OE_PIN
+#define SI570_OE_PIN			NOT_A_PIN
+#endif
+#ifndef SI570_OE_HIGH
+#define SI570_OE_HIGH			1
 #endif
 #define	SI570_FDCO_MIN_KHZ 		4850000		// kHz
 #define	SI570_FDCO_MAX_KHZ 		5670000		// kHz
@@ -84,8 +92,8 @@
 class Si570
 {
 public:
-	byte init(byte addr, unsigned long startupFreq, bool stability_7ppm);
 	byte init();
+	byte init(byte addr, unsigned long startupFreq, bool stability_7ppm, byte oepin=NOT_A_PIN, byte oehigh=1);
 	byte reset();
 	byte hardReset();
 
@@ -95,7 +103,15 @@ public:
 	/* Device registers writing (those methods update cache AND device) */
 	byte tune(unsigned long);
 
-	/* Debugging */
+	/*************************
+	 * Output Enable accessors
+	 */
+	boolean isEnabled();
+	void enable(boolean on=1);
+
+	/************
+	 * Debugging
+	 */
 
 	/*
 	 * Compare device values with local write cache
@@ -113,14 +129,10 @@ private:
 	/* Device factory settings */
 	byte i2cAddress;
 	unsigned long startFreq;
+	byte oepin;
+	boolean oehigh;
 	unsigned long fxtal;
 	byte regAddr;					// First register address (7 or 13)
-
-	/* Register value cache */
-//	byte hsdiv;
-//	unsigned int n1;
-//	unsigned int rfreq_i;
-//	unsigned long rfreq_f;
 
 	/* I2C buffer */
 	byte i2cReadBuf[6];
@@ -140,13 +152,9 @@ private:
 	byte setRfreq(unsigned long foutNew, byte * regs);
 	byte findDividers(unsigned long foutNew, byte &hsdiv, unsigned int &n1);
 	byte setRfreqInts(double rfreq, byte * regs);
-//	byte setHSDiv(byte hsdiv);
 	byte setHSDiv(byte hsdiv, byte * regs);
-//	byte setN1(unsigned int n1);
 	byte setN1(unsigned int n1, byte * regs);
-//	byte setRfreqRegisters(unsigned int rfreqInt, unsigned long rfreqFrac);
 	byte setRfreqRegisters(unsigned int rfreqInt, unsigned long rfreqFrac, byte * regs);
-
 
 	/* Frequency setting (cache AND device register update) */
 	byte setFrequency(unsigned long);
@@ -170,6 +178,8 @@ private:
 	 */
 	byte writeFrequencyRegisters();
 	byte readFrequencyRegisters();
+
+
 
 };
 
