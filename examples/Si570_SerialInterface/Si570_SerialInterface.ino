@@ -25,6 +25,7 @@
 
 //#define SI570_DEBUG
 
+#include <Wire.h>
 #include <Si570.h>
 #include <Arduino.h>
 
@@ -32,8 +33,9 @@ static Si570 device;
 static String buf;
 
 void displayInfos() {
+#ifdef SI570_DEBUG
 	device.debugWriteRegisters();
-#ifndef SI570_DEBUG
+#else
 	Serial.println("debug disabled !");
 #endif
 }
