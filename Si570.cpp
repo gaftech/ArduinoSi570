@@ -371,12 +371,7 @@ byte Si570::readRegister(byte byteAddress) {
 	Serial.print(": ");
 	Serial.print("0x");
 	Serial.print(resp, HEX);
-//	if (retcode != 0) {
-//		Serial.print(F(" [WIRE ERROR="));
-//		Serial.print(retcode);
-//		Serial.println("]");
-//	}
-	else Serial.println();
+	Serial.println();
 #endif
 
 	return resp;

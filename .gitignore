@@ -1,3 +1,4 @@
 build-cli
 /.project
 /.cproject
+/.settings

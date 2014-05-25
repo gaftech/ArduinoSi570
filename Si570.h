@@ -15,6 +15,9 @@
 #ifndef SI570_H_
 #define SI570_H_
 
+/**
+ * Uncomment following flag (SI570_DEBUG) to enable verbose output.
+ */
 //#define SI570_DEBUG
 
 /****************

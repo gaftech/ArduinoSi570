@@ -21,9 +21,17 @@
  * 	* Reset/calibrate Si570
  * 		Type "r" (soft)  or "R" then press enter
  *
+ * User may enable debugging features by uncommenting SI570_DEBUG flag
+ * in file Si570.h. If u're using the makefile, you may prefer to
+ * insert following line in it : "CPPFLAGS += -DSI570_DEBUG".
+ * Debugging features includes :
+ *  * More verbose output
+ *  * A register consistency check routine, i.e. a routine that
+ *  	performs a kind of "read-after-write" check.
+ *
  */
 
-//#define SI570_DEBUG
+
 
 #include <Wire.h>
 #include <Si570.h>
@@ -65,6 +73,7 @@ void tune() {
 }
 
 void checkRegisters() {
+#ifdef SI570_DEBUG
 	bool ok;
 
 	ok = device.checkFrequencyRegisters() == SI570_SUCCESS;
@@ -74,6 +83,9 @@ void checkRegisters() {
 	if(ok) Serial.println("OK");
 	else Serial.print("ERROR");
 	Serial.println();
+#else
+	Serial.println("To enable cache check please use SI570_DEBUG flag at compile time");
+#endif
 }
 
 void reset(bool hard) {
