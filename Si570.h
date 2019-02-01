@@ -96,7 +96,7 @@ class Si570
 {
 public:
 	byte init();
-	byte init(byte addr, unsigned long startupFreq, bool stability_7ppm, byte oepin=NOT_A_PIN, byte oehigh=1);
+	byte init(byte addr, unsigned long startupFreq, bool stability_7ppm, byte oepin, boolean oehigh);
 	byte reset();
 	byte hardReset();
 
